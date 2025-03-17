@@ -1,0 +1,58 @@
+name: Test CSM Model
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-csm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Log in to Hugging Face
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+        run: |
+          echo "$HUGGINGFACE_TOKEN" | huggingface-cli login --token
+
+      - name: Run basic speech generation test
+        run: |
+          source .venv/bin/activate
+          python -c "
+          from generator import load_csm_1b
+          import torchaudio, torch
+
+          device = 'cuda' if torch.cuda.is_available() else 'cpu'
+          generator = load_csm_1b(device=device)
+          audio = generator.generate(text='Hello, this is a test.', speaker=0, context=[], max_audio_length_ms=5000)
+          torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)
+          print('✅ Test completed successfully!')
+          "
+
+      - name: Upload generated audio file
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-audio
+          path: test_output.wav
+
+      - name: Cleanup
+        run: rm -rf .venv
