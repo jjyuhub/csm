@@ -1,0 +1,73 @@
+name: Print Repository Structure
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  print-repo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate repository report
+        run: |
+          python3 - <<'EOF'
+          import os
+
+          def build_tree(root, prefix=""):
+              tree_str = ""
+              try:
+                  entries = sorted(os.listdir(root))
+              except Exception as e:
+                  return f"Error listing directory: {e}\n"
+              # Exclude the .git directory
+              entries = [e for e in entries if e != '.git']
+              for idx, entry in enumerate(entries):
+                  full_path = os.path.join(root, entry)
+                  is_last = (idx == len(entries) - 1)
+                  branch = "└── " if is_last else "├── "
+                  tree_str += prefix + branch + entry + "\n"
+                  if os.path.isdir(full_path):
+                      extension = "    " if is_last else "│   "
+                      tree_str += build_tree(full_path, prefix + extension)
+              return tree_str
+
+          # Build the file tree
+          file_tree = build_tree(".")
+
+          # Build the report content
+          output = ""
+          output += "## Repository File Tree\n\n"
+          output += "```\n" + file_tree + "```\n\n"
+          output += "## File Contents\n\n"
+
+          for root, dirs, files in os.walk("."):
+              # Exclude the .git directory from traversal
+              if ".git" in dirs:
+                  dirs.remove(".git")
+              for file in sorted(files):
+                  file_path = os.path.join(root, file)
+                  rel_path = os.path.relpath(file_path, ".")
+                  output += "---\n\n"
+                  output += f"**{rel_path}**\n\n"
+                  output += "```\n"
+                  try:
+                      with open(file_path, encoding="utf-8") as f:
+                          output += f.read() + "\n"
+                  except Exception as e:
+                      output += f"Error reading file: {e}\n"
+                  output += "```\n\n"
+
+          # Write the output to a file
+          with open("repo_report.txt", "w", encoding="utf-8") as report_file:
+              report_file.write(output)
+          EOF
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-report
+          path: repo_report.txt
