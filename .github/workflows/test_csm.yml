@@ -24,10 +24,18 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m venv .venv
+          echo "✅ Virtual environment created."
           source .venv/bin/activate
+          echo "✅ Virtual environment activated."
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install huggingface_hub  # Ensure Hugging Face CLI is installed
+          echo "✅ Dependencies installed."
+
+      - name: Verify Hugging Face CLI installation
+        run: |
+          source .venv/bin/activate
+          python -c "import huggingface_hub; print('✅ Hugging Face Hub is installed')"
 
       - name: Log in to Hugging Face
         env:
@@ -35,6 +43,7 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "$HUGGINGFACE_TOKEN" | python -m huggingface_hub.cli login --token
+          echo "✅ Hugging Face login successful."
 
       - name: Run basic speech generation test
         run: |
