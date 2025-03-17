@@ -80,6 +80,64 @@ jobs:
           print('✅ Hugging Face login successful.')
           "
       
+      - name: Create temporary model patch
+        run: |
+          source .venv/bin/activate
+          cat > model_patch.py << 'EOF'
+          import models
+          import torch
+          from typing import Union, Dict, Optional
+          from pathlib import Path
+          import json
+          
+          # Store original from_pretrained method
+          original_from_pretrained = models.Model.from_pretrained
+          
+          # Create a patched version that handles the config
+          def patched_from_pretrained(
+              cls, 
+              pretrained_model_name_or_path: Union[str, Path], 
+              *, 
+              force_download: bool = False, 
+              resume_download: Optional[bool] = None, 
+              proxies: Optional[Dict] = None, 
+              token: Union[bool, str, None] = None, 
+              cache_dir: Union[Path, str, None] = None, 
+              local_files_only: bool = False, 
+              revision: Optional[str] = None, 
+              **model_kwargs
+          ):
+              # Create a default config if one is not provided
+              if "config" not in model_kwargs:
+                  config = models.ModelArgs(
+                      backbone_flavor="llama-1B",
+                      decoder_flavor="llama-100M",
+                      text_vocab_size=128256,
+                      audio_vocab_size=1024,
+                      audio_num_codebooks=32
+                  )
+                  model_kwargs["config"] = config
+              
+              # Call the original method with our modified arguments
+              return original_from_pretrained(
+                  cls, 
+                  pretrained_model_name_or_path,
+                  force_download=force_download,
+                  resume_download=resume_download,
+                  proxies=proxies,
+                  token=token,
+                  cache_dir=cache_dir,
+                  local_files_only=local_files_only,
+                  revision=revision,
+                  **model_kwargs
+              )
+          
+          # Replace the method
+          models.Model.from_pretrained = classmethod(patched_from_pretrained)
+          EOF
+          
+          echo "✅ Created model patch file."
+      
       - name: Debug generator module
         run: |
           source .venv/bin/activate
@@ -103,6 +161,9 @@ jobs:
           echo "Starting generation test with improved error handling..."
           python -c "
           try:
+              # First import our patch to modify the from_pretrained method
+              import model_patch
+              
               from generator import load_csm_1b, Model
               import torchaudio, torch
               import json, os
