@@ -59,25 +59,20 @@ jobs:
           source .venv/bin/activate
           python -c "import huggingface_hub; print('huggingface_hub version:', huggingface_hub.__version__)"
           python -c "import huggingface_hub; print('huggingface_hub path:', huggingface_hub.__file__)"
-          echo "Checking CLI module..."
-          python -c "from huggingface_hub import cli; print('✅ Hugging Face Hub CLI is available')"
-          pip show huggingface_hub
+          echo "Listing huggingface_hub contents:"
+          python -c "import huggingface_hub; print(dir(huggingface_hub))"
       
       - name: Log in to Hugging Face
         env:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: |
-          set -x  # Enable verbose mode
           source .venv/bin/activate
-          echo "Attempting login via Python API first..."
+          echo "Logging in to Hugging Face using API method..."
           python -c "
           from huggingface_hub import login
           login(token='$HUGGINGFACE_TOKEN')
-          print('✅ Hugging Face login via API successful.')
+          print('✅ Hugging Face login successful.')
           "
-          echo "Now attempting CLI login method..."
-          python -m huggingface_hub.cli login --token $HUGGINGFACE_TOKEN
-          echo "✅ Hugging Face login successful."
       
       - name: Run basic speech generation test
         run: |
