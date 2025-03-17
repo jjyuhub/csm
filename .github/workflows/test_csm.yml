@@ -29,6 +29,12 @@ jobs:
           echo "Directory contents:"
           ls -la
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          echo "✅ System dependencies installed."
+      
       - name: Install dependencies
         run: |
           set -x  # Enable verbose mode
@@ -74,31 +80,72 @@ jobs:
           print('✅ Hugging Face login successful.')
           "
       
+      - name: Debug generator module
+        run: |
+          source .venv/bin/activate
+          echo "Examining generator.py..."
+          cat generator.py
+          echo "Checking Model class implementation..."
+          python -c "
+          import inspect
+          from generator import Model
+          print('Model class __init__ signature:', inspect.signature(Model.__init__))
+          print('Model class from_pretrained signature:', inspect.signature(Model.from_pretrained))
+          from generator import load_csm_1b
+          print('load_csm_1b signature:', inspect.signature(load_csm_1b))
+          "
+      
       - name: Run basic speech generation test
         run: |
           source .venv/bin/activate
           echo "Python and torch versions:"
           python -c "import sys, torch; print(f'Python: {sys.version}'); print(f'PyTorch: {torch.__version__}')"
-          echo "Starting generation test..."
+          echo "Starting generation test with improved error handling..."
           python -c "
-          from generator import load_csm_1b
-          import torchaudio, torch
-          print('Modules imported successfully')
-          device = 'cuda' if torch.cuda.is_available() else 'cpu'
-          print(f'Using device: {device}')
-          generator = load_csm_1b(device=device)
-          print('Model loaded successfully')
-          audio = generator.generate(text='Hello, this is a test.', speaker=0, context=[], max_audio_length_ms=5000)
-          print('Audio generated successfully')
-          torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)
-          print('✅ Test completed successfully!')
+          try:
+              from generator import load_csm_1b, Model
+              import torchaudio, torch
+              import json, os
+              
+              print('Modules imported successfully')
+              device = 'cuda' if torch.cuda.is_available() else 'cpu'
+              print(f'Using device: {device}')
+              
+              print('Checking if model config exists...')
+              from huggingface_hub import hf_hub_download
+              try:
+                  config_path = hf_hub_download('sesame/csm-1b', 'config.json')
+                  with open(config_path, 'r') as f:
+                      config = json.load(f)
+                  print('Config loaded successfully')
+              except Exception as e:
+                  print(f'Error loading config: {e}')
+                  config = None
+              
+              print('Attempting to load model...')
+              generator = load_csm_1b(device=device)
+              print('Model loaded successfully')
+              audio = generator.generate(text='Hello, this is a test.', speaker=0, context=[], max_audio_length_ms=5000)
+              print('Audio generated successfully')
+              torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)
+              print('✅ Test completed successfully!')
+          except Exception as e:
+              import traceback
+              print(f'Error during test: {e}')
+              traceback.print_exc()
+              exit(1)
           "
       
       - name: Upload generated audio file
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: generated-audio
-          path: test_output.wav
+          path: |
+            test_output.wav
+            **/generator.py
+          if-no-files-found: ignore
       
       - name: Cleanup
+        if: always()
         run: rm -rf .venv
