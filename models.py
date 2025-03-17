@@ -7,41 +7,43 @@ from huggingface_hub import PyTorchModelHubMixin
 from torchtune.models import llama3_2
 
 
-def llama3_2_1B() -> torchtune.modules.transformer.TransformerDecoder:
+def qwen2_5_1_5B() -> torchtune.modules.transformer.TransformerDecoder:
     return llama3_2.llama3_2(
-        vocab_size=128_256,
-        num_layers=16,
-        num_heads=32,
-        num_kv_heads=8,
-        embed_dim=2048,
-        max_seq_len=2048,
-        intermediate_dim=8192,
+        vocab_size=151936,  # Qwen2.5 vocab size
+        num_layers=24,      # Qwen2.5-1.5B has 24 layers
+        num_heads=16,       # Adjust heads for Qwen
+        num_kv_heads=4,     # Adjust KV heads for Qwen
+        embed_dim=1536,     # Qwen2.5-1.5B embedding dimension
+        max_seq_len=2048,   # Keep the same sequence length
+        intermediate_dim=4096,  # Adjust for Qwen architecture
         attn_dropout=0.0,
-        norm_eps=1e-5,
-        rope_base=500_000,
-        scale_factor=32,
+        norm_eps=1e-6,      # Qwen uses different norm epsilon
+        rope_base=500_000,  # Keep the same RoPE base
+        scale_factor=32,    # Keep the same scale factor
     )
 
 
-def llama3_2_100M() -> torchtune.modules.transformer.TransformerDecoder:
+def qwen2_5_100M() -> torchtune.modules.transformer.TransformerDecoder:
     return llama3_2.llama3_2(
-        vocab_size=128_256,
-        num_layers=4,
+        vocab_size=151936,  # Qwen2.5 vocab size
+        num_layers=6,       # Reduced for 100M model
         num_heads=8,
         num_kv_heads=2,
-        embed_dim=1024,
+        embed_dim=768,      # Adjusted for smaller model
         max_seq_len=2048,
-        intermediate_dim=8192,
+        intermediate_dim=2048,  # Adjusted for smaller model
         attn_dropout=0.0,
-        norm_eps=1e-5,
+        norm_eps=1e-6,      # Qwen uses different norm epsilon
         rope_base=500_000,
         scale_factor=32,
     )
 
 
 FLAVORS = {
-    "llama-1B": llama3_2_1B,
-    "llama-100M": llama3_2_100M,
+    "llama-1B": qwen2_5_1_5B,     # Map old key to new implementation
+    "llama-100M": qwen2_5_100M,   # Map old key to new implementation
+    "qwen-1.5B": qwen2_5_1_5B,
+    "qwen-100M": qwen2_5_100M,
 }
 
 
