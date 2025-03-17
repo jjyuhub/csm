@@ -27,12 +27,14 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install huggingface_hub  # Ensure Hugging Face CLI is installed
 
       - name: Log in to Hugging Face
         env:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: |
-          echo "$HUGGINGFACE_TOKEN" | huggingface-cli login --token
+          source .venv/bin/activate
+          echo "$HUGGINGFACE_TOKEN" | python -m huggingface_hub.cli login --token
 
       - name: Run basic speech generation test
         run: |
