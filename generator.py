@@ -19,11 +19,11 @@ class Segment:
     audio: torch.Tensor
 
 
-def load_qwen_tokenizer():
+def load_llama3_tokenizer():
     """
-    Load the Qwen2.5-1.5B-Instruct tokenizer with appropriate post-processing
+    https://github.com/huggingface/transformers/issues/22794#issuecomment-2092623992
     """
-    tokenizer_name = "Qwen/Qwen2.5-1.5B-Instruct"
+    tokenizer_name = "meta-llama/Llama-3.2-1B"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
     bos = tokenizer.bos_token
     eos = tokenizer.eos_token
@@ -44,7 +44,7 @@ class Generator:
         self._model = model
         self._model.setup_caches(1)
 
-        self._text_tokenizer = load_qwen_tokenizer()
+        self._text_tokenizer = load_llama3_tokenizer()
 
         device = next(model.parameters()).device
         mimi_weight = hf_hub_download(loaders.DEFAULT_REPO, loaders.MIMI_NAME)
@@ -165,22 +165,7 @@ class Generator:
 
 def load_csm_1b(device: str = "cuda") -> Generator:
     model = Model.from_pretrained("sesame/csm-1b")
-    
-    # Map old config flavors to new Qwen flavors
-    if hasattr(model.config, 'backbone_flavor') and model.config.backbone_flavor == 'llama-1B':
-        model.config.backbone_flavor = 'qwen-1.5B'
-    if hasattr(model.config, 'decoder_flavor') and model.config.decoder_flavor == 'llama-100M':
-        model.config.decoder_flavor = 'qwen-100M'
-    
-    # Re-initialize backbone and decoder with the new flavors
-    model.backbone, backbone_dim = _prepare_transformer(FLAVORS[model.config.backbone_flavor]())
-    model.decoder, decoder_dim = _prepare_transformer(FLAVORS[model.config.decoder_flavor]())
-    
-    # Update projections if dimensions changed
-    if model.projection.in_features != backbone_dim or model.projection.out_features != decoder_dim:
-        model.projection = nn.Linear(backbone_dim, decoder_dim, bias=False)
-    
     model.to(device=device, dtype=torch.bfloat16)
-    
+
     generator = Generator(model)
     return generator
