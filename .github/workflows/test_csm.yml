@@ -125,7 +125,7 @@ jobs:
               print('Attempting to load model...')
               generator = load_csm_1b(device=device)
               print('Model loaded successfully')
-              audio = generator.generate(text='Hello, this is a test.', speaker=0, context=[], max_audio_length_ms=5000)
+              audio = generator.generate(text='Oh, come on! You seriously expect me to believe that? No way!', speaker=0, context=[], max_audio_length_ms=5000)
               print('Audio generated successfully')
               torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)
               print('✅ Test completed successfully!')
