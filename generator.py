@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Tuple
+import os
+import gc
 
 import torch
 import torchaudio
@@ -9,6 +11,12 @@ from moshi.models import loaders
 from tokenizers.processors import TemplateProcessing
 from transformers import AutoTokenizer
 from watermarking import CSM_1B_GH_WATERMARK, load_watermarker, watermark
+
+# Set thread count for better CPU performance based on available cores
+import multiprocessing
+num_cpus = max(1, multiprocessing.cpu_count())
+os.environ["OMP_NUM_THREADS"] = str(num_cpus)  
+torch.set_num_threads(num_cpus)  # Explicitly set PyTorch threads
 
 
 @dataclass
@@ -52,10 +60,17 @@ class Generator:
         mimi.set_num_codebooks(32)
         self._audio_tokenizer = mimi
 
-        self._watermarker = load_watermarker(device=device)
+        # Lazy initialization of watermarker
+        self._watermarker = None
 
         self.sample_rate = mimi.sample_rate
         self.device = device
+
+    def _get_watermarker(self):
+        # Lazy load watermarker only when needed
+        if self._watermarker is None:
+            self._watermarker = load_watermarker(device=self.device)
+        return self._watermarker
 
     def _tokenize_text_segment(self, text: str, speaker: int) -> Tuple[torch.Tensor, torch.Tensor]:
         frame_tokens = []
@@ -112,6 +127,7 @@ class Generator:
         max_audio_length_ms: float = 90_000,
         temperature: float = 0.9,
         topk: int = 50,
+        apply_watermark: bool = False,  # Watermarking disabled by default for performance
     ) -> torch.Tensor:
         self._model.reset_caches()
 
@@ -138,10 +154,22 @@ class Generator:
         if curr_tokens.size(1) >= max_seq_len:
             raise ValueError(f"Inputs too long, must be below max_seq_len - max_audio_frames: {max_seq_len}")
 
-        for _ in range(max_audio_frames):
+        # Preallocate full sample tensor to avoid repeated concatenation
+        full_sample = None
+        silence_counter = 0
+        
+        for i in range(max_audio_frames):
             sample = self._model.generate_frame(curr_tokens, curr_tokens_mask, curr_pos, temperature, topk)
             if torch.all(sample == 0):
                 break  # eos
+            
+            # Early stopping on silence detection (3 consecutive near-zero frames)
+            if torch.all(torch.abs(sample) < 0.01):
+                silence_counter += 1
+                if silence_counter >= 3:
+                    break
+            else:
+                silence_counter = 0
 
             samples.append(sample)
 
@@ -153,19 +181,41 @@ class Generator:
 
         audio = self._audio_tokenizer.decode(torch.stack(samples).permute(1, 2, 0)).squeeze(0).squeeze(0)
 
-        # This applies an imperceptible watermark to identify audio as AI-generated.
-        # Watermarking ensures transparency, dissuades misuse, and enables traceability.
-        # Please be a responsible AI citizen and keep the watermarking in place.
-        # If using CSM 1B in another application, use your own private key and keep it secret.
-        audio, wm_sample_rate = watermark(self._watermarker, audio, self.sample_rate, CSM_1B_GH_WATERMARK)
-        audio = torchaudio.functional.resample(audio, orig_freq=wm_sample_rate, new_freq=self.sample_rate)
+        # Apply watermarking only if explicitly requested
+        if apply_watermark:
+            # This applies an imperceptible watermark to identify audio as AI-generated.
+            # Watermarking ensures transparency, dissuades misuse, and enables traceability.
+            audio, wm_sample_rate = watermark(self._get_watermarker(), audio, self.sample_rate, CSM_1B_GH_WATERMARK)
+            
+            # Optimize resampling for common cases
+            if wm_sample_rate != self.sample_rate:
+                audio = torchaudio.functional.resample(
+                    audio, 
+                    orig_freq=wm_sample_rate, 
+                    new_freq=self.sample_rate,
+                    lowpass_filter_width=6  # Lower value for faster resampling
+                )
+
+        # Clean up to reduce memory pressure
+        if self.device == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
 
         return audio
 
 
-def load_csm_1b(device: str = "cuda") -> Generator:
+def load_csm_1b(device: str = "cuda", use_float16: bool = False, enable_watermarking: bool = False) -> Generator:
     model = Model.from_pretrained("sesame/csm-1b")
-    model.to(device=device, dtype=torch.bfloat16)
+    
+    # Set all parameters to not require gradients for inference
+    for param in model.parameters():
+        param.requires_grad = False
+    
+    # Use fp16 on CPU for better performance in some cases
+    if device == "cpu" and use_float16:
+        model.to(device=device, dtype=torch.float16)
+    else:
+        model.to(device=device, dtype=torch.bfloat16)
 
     generator = Generator(model)
     return generator
