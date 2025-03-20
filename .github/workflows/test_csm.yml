@@ -80,55 +80,47 @@ jobs:
           print('✅ Hugging Face login successful.')
           "
       
-      - name: Debug generator module
-        run: |
-          source .venv/bin/activate
-          echo "Examining generator.py..."
-          cat generator.py
-          echo "Checking Model class implementation..."
-          python -c "
-          import inspect
-          from generator import Model
-          print('Model class __init__ signature:', inspect.signature(Model.__init__))
-          print('Model class from_pretrained signature:', inspect.signature(Model.from_pretrained))
-          from generator import load_csm_1b
-          print('load_csm_1b signature:', inspect.signature(load_csm_1b))
-          "
-      
-      - name: Run basic speech generation test
+      - name: Run optimized speech generation test
         run: |
           source .venv/bin/activate
           echo "Python and torch versions:"
           python -c "import sys, torch; print(f'Python: {sys.version}'); print(f'PyTorch: {torch.__version__}')"
-          echo "Starting generation test with improved error handling..."
+          echo "Starting generation test with optimizations..."
           python -c "
           try:
               from generator import load_csm_1b, Model
               import torchaudio, torch
-              import json, os
+              import time
               
               print('Modules imported successfully')
               device = 'cuda' if torch.cuda.is_available() else 'cpu'
               print(f'Using device: {device}')
               
-              print('Checking if model config exists...')
-              from huggingface_hub import hf_hub_download
-              try:
-                  config_path = hf_hub_download('sesame/csm-1b', 'config.json')
-                  with open(config_path, 'r') as f:
-                      config = json.load(f)
-                  print('Config loaded successfully')
-              except Exception as e:
-                  print(f'Error loading config: {e}')
-                  config = None
+              start_time = time.time()
+              print('Loading model with optimizations...')
+              generator = load_csm_1b(
+                  device=device, 
+                  use_float16=(device=='cpu'),  # Use float16 on CPU
+                  enable_watermarking=False     # Disable watermarking for speed
+              )
+              print(f'Model loaded in {time.time() - start_time:.2f} seconds')
               
-              print('Attempting to load model...')
-              generator = load_csm_1b(device=device)
-              print('Model loaded successfully')
-              audio = generator.generate(text='Are you coming, or am I just waiting here forever?', speaker=0, context=[], max_audio_length_ms=10000)
-              print('Audio generated successfully')
+              print('Generating audio...')
+              gen_start = time.time()
+              audio = generator.generate(
+                  text='Are you coming, or am I just waiting here forever?', 
+                  speaker=0, 
+                  context=[], 
+                  max_audio_length_ms=5000,  # Shorter for faster tests
+                  apply_watermark=False      # Disable watermarking
+              )
+              gen_time = time.time() - gen_start
+              print(f'Audio generated in {gen_time:.2f} seconds')
+              
               torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)
               print('✅ Test completed successfully!')
+              total_time = time.time() - start_time
+              print(f'Total processing time: {total_time:.2f} seconds')
           except Exception as e:
               import traceback
               print(f'Error during test: {e}')
