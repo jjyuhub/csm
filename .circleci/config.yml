@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   test-csm:
     docker:
-      - image: cimg/python:3.10  # Using the official Python 3.10 image
+      - image: cimg/python:3.10  # Official Python 3.10 image
     working_directory: ~/repo
     steps:
       - checkout
@@ -66,7 +66,7 @@ jobs:
       - run:
           name: Log in to Hugging Face
           environment:
-            HUGGINGFACE_TOKEN: $HUGGINGFACE_TOKEN  # Ensure this is set in your CircleCI project settings
+            HUGGINGFACE_TOKEN: $HUGGINGFACE_TOKEN  # Set this in your CircleCI project settings
           command: |
             source .venv/bin/activate
             echo "Logging in to Hugging Face using API method..."
@@ -82,41 +82,53 @@ jobs:
             python -c "import inspect; from generator import Model; print('Model class __init__ signature:', inspect.signature(Model.__init__)); print('Model class from_pretrained signature:', inspect.signature(Model.from_pretrained)); from generator import load_csm_1b; print('load_csm_1b signature:', inspect.signature(load_csm_1b))"
 
       - run:
+          name: Write Python Test Script
+          command: |
+            source .venv/bin/activate
+            # Write the test script line-by-line to avoid YAML parsing issues with HEREDOCs and f-strings.
+            echo "try:" > run_test.py
+            echo "    from generator import load_csm_1b, Model" >> run_test.py
+            echo "    import torchaudio, torch" >> run_test.py
+            echo "    import json, os" >> run_test.py
+            echo "    print('Modules imported successfully')" >> run_test.py
+            echo "    device = 'cuda' if torch.cuda.is_available() else 'cpu'" >> run_test.py
+            echo "    print(f'Using device: {device}')" >> run_test.py
+            echo "    print('Checking if model config exists...')" >> run_test.py
+            echo "    from huggingface_hub import hf_hub_download" >> run_test.py
+            echo "    try:" >> run_test.py
+            echo "        config_path = hf_hub_download('sesame/csm-1b', 'config.json')" >> run_test.py
+            echo "        with open(config_path, 'r') as f:" >> run_test.py
+            echo "            config = json.load(f)" >> run_test.py
+            echo "        print('Config loaded successfully')" >> run_test.py
+            echo "    except Exception as e:" >> run_test.py
+            echo "        print(f'Error loading config: {e}')" >> run_test.py
+            echo "        config = None" >> run_test.py
+            echo "    print('Attempting to load model...')" >> run_test.py
+            echo "    generator = load_csm_1b(device=device)" >> run_test.py
+            echo "    print('Model loaded successfully')" >> run_test.py
+            echo "    audio = generator.generate(" >> run_test.py
+            echo "        text='Are you coming, or am I just waiting here forever?', " >> run_test.py
+            echo "        speaker=0," >> run_test.py
+            echo "        context=[], " >> run_test.py
+            echo "        max_audio_length_ms=10000" >> run_test.py
+            echo "    )" >> run_test.py
+            echo "    print('Audio generated successfully')" >> run_test.py
+            echo "    torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)" >> run_test.py
+            echo "    print('✅ Test completed successfully!')" >> run_test.py
+            echo "except Exception as e:" >> run_test.py
+            echo "    import traceback" >> run_test.py
+            echo "    print(f'Error during test: {e}')" >> run_test.py
+            echo "    traceback.print_exc()" >> run_test.py
+            echo "    exit(1)" >> run_test.py
+
+      - run:
           name: Run Basic Speech Generation Test
           command: |
             source .venv/bin/activate
             echo "Python and torch versions:"
             python -c "import sys, torch; print(f'Python: {sys.version}'); print(f'PyTorch: {torch.__version__}')"
-            echo "Starting generation test with improved error handling..."
-            python -c "try:
-    from generator import load_csm_1b, Model
-    import torchaudio, torch
-    import json, os
-    print('Modules imported successfully')
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f'Using device: {device}')
-    print('Checking if model config exists...')
-    from huggingface_hub import hf_hub_download
-    try:
-        config_path = hf_hub_download('sesame/csm-1b', 'config.json')
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-        print('Config loaded successfully')
-    except Exception as e:
-        print(f'Error loading config: {e}')
-        config = None
-    print('Attempting to load model...')
-    generator = load_csm_1b(device=device)
-    print('Model loaded successfully')
-    audio = generator.generate(text='Are you coming, or am I just waiting here forever?', speaker=0, context=[], max_audio_length_ms=10000)
-    print('Audio generated successfully')
-    torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)
-    print('✅ Test completed successfully!')
-except Exception as e:
-    import traceback
-    print(f'Error during test: {e}')
-    traceback.print_exc()
-    exit(1)"
+            echo "Starting test execution..."
+            python run_test.py
 
       - store_artifacts:
           name: Generated Audio File
