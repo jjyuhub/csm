@@ -67,8 +67,6 @@ jobs:
 
       - run:
           name: Log in to Hugging Face (Verbose)
-          environment:
-            HUGGINGFACE_TOKEN: $HUGGINGFACE_TOKEN  # Ensure this is set in your CircleCI project settings
           command: |
             source .venv/bin/activate
             echo "Logging in to Hugging Face using API method..."
