@@ -11,20 +11,15 @@ jobs:
       - run:
           name: Debug Environment
           command: |
-            echo "Python version:"
-            python --version
-            echo "Python location:"
-            which python
-            echo "Current directory:"
-            pwd
-            echo "Directory contents:"
-            ls -la
+            echo "Python version:" && python --version
+            echo "Python location:" && which python
+            echo "Current directory:" && pwd
+            echo "Directory contents:" && ls -la
 
       - run:
           name: Install System Dependencies
           command: |
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
+            sudo apt-get update && sudo apt-get install -y ffmpeg
             echo "✅ System dependencies installed."
 
       - run:
@@ -49,10 +44,8 @@ jobs:
           name: Verify Python Paths
           command: |
             source .venv/bin/activate
-            echo "Python path:"
-            python -c "import sys; print(sys.path)"
-            echo "Python executable:"
-            python -c "import sys; print(sys.executable)"
+            echo "Python path:" && python -c "import sys; print(sys.path)"
+            echo "Python executable:" && python -c "import sys; print(sys.executable)"
 
       - run:
           name: Verify Hugging Face CLI Installation
@@ -60,17 +53,27 @@ jobs:
             source .venv/bin/activate
             python -c "import huggingface_hub; print('huggingface_hub version:', huggingface_hub.__version__)"
             python -c "import huggingface_hub; print('huggingface_hub path:', huggingface_hub.__file__)"
-            echo "Listing huggingface_hub contents:"
-            python -c "import huggingface_hub; print(dir(huggingface_hub))"
+            echo "Listing huggingface_hub contents:" && python -c "import huggingface_hub; print(dir(huggingface_hub))"
 
       - run:
-          name: Log in to Hugging Face
+          name: Debug HUGGINGFACE_TOKEN
+          command: |
+            echo "Checking HUGGINGFACE_TOKEN..."
+            if [ -z "$HUGGINGFACE_TOKEN" ]; then
+              echo "HUGGINGFACE_TOKEN is not set!";
+            else
+              echo "HUGGINGFACE_TOKEN is set with length: ${#HUGGINGFACE_TOKEN}";
+            fi
+
+      - run:
+          name: Log in to Hugging Face (Verbose)
           environment:
-            HUGGINGFACE_TOKEN: $HUGGINGFACE_TOKEN  # Set this in your CircleCI project settings
+            HUGGINGFACE_TOKEN: $HUGGINGFACE_TOKEN  # Ensure this is set in your CircleCI project settings
           command: |
             source .venv/bin/activate
             echo "Logging in to Hugging Face using API method..."
-            python -c "from huggingface_hub import login; login(token='$HUGGINGFACE_TOKEN'); print('✅ Hugging Face login successful.')"
+            # Enable debug logging and print the token length (do not print the token itself)
+            python -c "import logging; logging.basicConfig(level=logging.DEBUG); import os; print('DEBUG: HUGGINGFACE_TOKEN length:', len(os.environ.get('HUGGINGFACE_TOKEN',''))); from huggingface_hub import login; login(token=os.environ.get('HUGGINGFACE_TOKEN')); print('✅ Hugging Face login successful.')"
 
       - run:
           name: Debug Generator Module
@@ -85,7 +88,6 @@ jobs:
           name: Write Python Test Script
           command: |
             source .venv/bin/activate
-            # Write the test script line-by-line to avoid YAML parsing issues with HEREDOCs and f-strings.
             echo "try:" > run_test.py
             echo "    from generator import load_csm_1b, Model" >> run_test.py
             echo "    import torchaudio, torch" >> run_test.py
@@ -113,6 +115,7 @@ jobs:
             echo "        max_audio_length_ms=10000" >> run_test.py
             echo "    )" >> run_test.py
             echo "    print('Audio generated successfully')" >> run_test.py
+            echo "    import torchaudio" >> run_test.py
             echo "    torchaudio.save('test_output.wav', audio.unsqueeze(0).cpu(), generator.sample_rate)" >> run_test.py
             echo "    print('✅ Test completed successfully!')" >> run_test.py
             echo "except Exception as e:" >> run_test.py
